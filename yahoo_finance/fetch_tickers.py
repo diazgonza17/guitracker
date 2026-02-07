@@ -104,7 +104,7 @@ def download_with_retries(ticker: str, retries: int = MAX_RETRIES) -> pd.DataFra
             return df
         except Exception as e:
             wait = (2 ** (attempt - 1)) + random.uniform(0.0, 1.0) # Exponential backoff with jitter
-            print(f"  ! error for <{ticker}> (attempt {attempt}/{retries}): {e}")
+            print(f"  ! error for <{ticker:<10}> (attempt {attempt}/{retries}): {e}")
             print(f"    -> sleeping {wait:.2f}s before retrying...")
             time.sleep(wait)
 
@@ -140,7 +140,7 @@ def main() -> None:
         cache_path = CACHE_DIR / f"{ticker.replace('.', '_')}.csv"
 
         if is_cache_fresh(cache_path) and not force_refresh:
-            print(f"Loading cache for {ticker} -> {cache_path} (age {cache_age_seconds(cache_path)/60:.1f} min)")
+            print(f"Loading cache for {ticker:<10} -> {cache_path} (age {cache_age_seconds(cache_path)/60:.1f} min)")
             df = pd.read_csv(cache_path)
             all_rows.append(df)
             continue
@@ -149,7 +149,7 @@ def main() -> None:
         df = download_with_retries(ticker)
         
         if df is None or df.empty:
-            print(f"  WARNING: no data returned for <{ticker}>, skipping.")
+            print(f"  WARNING: no data returned for <{ticker:<10}>, skipping.")
             continue
 
         out = normalize(df, ticker)
