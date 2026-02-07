@@ -1,0 +1,76 @@
+[
+  {
+    "asset_id": "BTC",
+    "account_id": "binance",
+    "quote_currency": "USD",
+    "twelvedata_symbol": "BTC/USD",
+    "twelvedata_exchange": "BINANCE"
+  },
+  {
+    "asset_id": "ETH",
+    "account_id": "binance",
+    "quote_currency": "USD",
+    "twelvedata_symbol": "ETH/USD",
+    "twelvedata_exchange": "BINANCE"
+  },
+  {
+    "asset_id": "AAPL",
+    "account_id": "bullmarket",
+    "quote_currency": "ARS",
+    "yfinance_symbol": "AAPL.BA"
+  },
+  {
+    "asset_id": "EEM",
+    "account_id": "bullmarket",
+    "quote_currency": "ARS",
+    "yfinance_symbol": "EEM.BA"
+  },
+  {
+    "asset_id": "GLD",
+    "account_id": "bullmarket",
+    "quote_currency": "ARS",
+    "yfinance_symbol": "GLD.BA"
+  },
+  {
+    "asset_id": "IEUR",
+    "account_id": "bullmarket",
+    "quote_currency": "ARS",
+    "yfinance_symbol": "IEUR.BA"
+  },
+  {
+    "asset_id": "KO",
+    "account_id": "bullmarket",
+    "quote_currency": "ARS",
+    "yfinance_symbol": "KO.BA"
+  },
+  {
+    "asset_id": "MCD",
+    "account_id": "bullmarket",
+    "quote_currency": "ARS",
+    "yfinance_symbol": "MCD.BA"
+  },
+  {
+    "asset_id": "MSFT",
+    "account_id": "bullmarket",
+    "quote_currency": "ARS",
+    "yfinance_symbol": "MSFT.BA"
+  },
+  {
+    "asset_id": "PEP",
+    "account_id": "bullmarket",
+    "quote_currency": "ARS",
+    "yfinance_symbol": "PEP.BA"
+  },
+  {
+    "asset_id": "QQQ",
+    "account_id": "bullmarket",
+    "quote_currency": "ARS",
+    "yfinance_symbol": "QQQ.BA"
+  },
+  {
+    "asset_id": "SPY",
+    "account_id": "bullmarket",
+    "quote_currency": "ARS",
+    "yfinance_symbol": "SPY.BA"
+  }
+]
