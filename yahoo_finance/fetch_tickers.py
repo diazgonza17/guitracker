@@ -2,6 +2,7 @@ import os
 import json
 import time
 import random
+from datetime import date
 from pathlib import Path
 from typing import Any, Dict, List
 from utils.load_assets import Asset, load_assets
@@ -36,56 +37,63 @@ def env_bool(name: str, default: bool = False) -> bool:
         return False
     raise ValueError(f"Invalid boolean value for {name}: {val}")
 
+def env_date(name: str) -> date | None:
+    val = os.getenv(name)
+    if not val:
+        return None
+    try:
+        return pd.to_datetime(val, format="%Y-%m-%d").date()
+    except Exception as e:
+        raise ValueError(f"Invalid date value for {name}: {val}") from e
+
+
 # ----------------------------
 # Helpers: cache
 # ----------------------------
 
 def cache_age_seconds(path: Path) -> float:
-    """
-    Returns the age of the cache file in seconds, or infinity if it doesn't exist.
-    """
     if not path.exists():
         return float("inf")
 
     return time.time() - path.stat().st_mtime
 
 def is_cache_fresh(path: Path) -> bool:
-    """
-    Returns True if the cache file exists and is younger thatn CACHE_TTL_SECONDS.
-    """
     return path.exists() and cache_age_seconds(path) < CACHE_TTL_SECONDS
+
+def generate_cache_key(ticker: str, interval: str, period: str, start_date: date | None, end_date: date | None) -> str:
+    safe_ticker = ticker.replace(".", "_")
+    if start_date and end_date:
+        start = start_date.isoformat() if start_date else "none"
+        end = end_date.isoformat() if end_date else "none"
+        return f"{safe_ticker}__interval-{interval}__start-{start}__end-{end}"
+    else:
+        return f"{safe_ticker}__interval-{interval}__period-{period}"
 
 # ----------------------------
 # Helpers: fetching + normalization
 # ----------------------------
 
-def download_with_retries(ticker: str, retries: int = MAX_RETRIES) -> pd.DataFrame:
-    """
-    Download history for one ticker, retrying on transient failures.
-    """
-    for attempt in range(1, retries + 1):
+def download_with_retries(ticker: str, start_date: date | None = None, end_date: date | None = None) -> pd.DataFrame:
+    for attempt in range(1, MAX_RETRIES + 1):
         try:
-            df = yf.download(
-                ticker,
-                period=PERIOD,
-                interval=INTERVAL,
-                progress=False,
-                threads=False,
-            )
+            params = dict(interval=INTERVAL, progress=False, threads=False)
+            if start_date and end_date:
+                params["start"] = start_date.strftime("%Y-%m-%d")
+                params["end"] = end_date.strftime("%Y-%m-%d")
+            else:
+                params["period"] = PERIOD
+
+            df = yf.download(ticker, **params)
             return df
         except Exception as e:
             wait = (2 ** (attempt - 1)) + random.uniform(0.0, 1.0) # Exponential backoff with jitter
-            print(f"  ! error for <{ticker:<10}> (attempt {attempt}/{retries}): {e}")
+            print(f"  ! error for <{ticker:<10}> (attempt {attempt}/{MAX_RETRIES}): {e}")
             print(f"    -> sleeping {wait:.2f}s before retrying...")
             time.sleep(wait)
 
     return pd.DataFrame()  # Return empty DataFrame if all retries fail
 
 def normalize(df: pd.DataFrame, ticker: str) -> pd.DataFrame:
-    """
-    Turn yfinance output into a clean table:
-    date, ticker, close_ars, volume
-    """
     df = df.reset_index()
     df.columns = [c[0] if isinstance(c, tuple) else c for c in df.columns]
 
@@ -103,7 +111,9 @@ def main() -> None:
     assets = load_assets(ASSETS_PATH)
     print(f"Loaded {len(assets)} assets from {ASSETS_PATH}")
     force_refresh = env_bool("FORCE_REFRESH", default=False)
-    print(f"FORCE_REFRESH={force_refresh}")
+    start_date = env_date("START_DATE")
+    end_date = env_date("END_DATE")
+    print(f"FORCE_REFRESH={force_refresh} START_DATE={start_date} END_DATE={end_date}")
 
     all_rows: List[pd.DataFrame] = []
 
@@ -112,7 +122,8 @@ def main() -> None:
         if not ticker:
             continue
 
-        cache_path = CACHE_DIR / f"{ticker.replace('.', '_')}.csv"
+        cache_key = generate_cache_key(ticker, INTERVAL, PERIOD, start_date, end_date)
+        cache_path = CACHE_DIR / f"{cache_key}.csv"
 
         if is_cache_fresh(cache_path) and not force_refresh:
             print(f"Loading cache for {ticker:<10} -> {cache_path} (age {cache_age_seconds(cache_path)/60:.1f} min)")
@@ -121,7 +132,7 @@ def main() -> None:
             continue
 
         print(f"Fetching {ticker}...")
-        df = download_with_retries(ticker)
+        df = download_with_retries(ticker, start_date=start_date, end_date=end_date)
         
         if df is None or df.empty:
             print(f"  WARNING: no data returned for <{ticker:<10}>, skipping.")
