@@ -122,7 +122,7 @@ def fetch_existing_prices(conn: psycopg.Connection, keys: Iterable[Key]) -> Dict
     with conn.cursor() as cur:
         cur.execute(sql, (dates, asset_ids, account_ids))
         for as_of_date, asset_id, account_id, price in cur.fetchall():
-            existing[(as_of_date, asset_id, account_id)] = price
+            existing[(as_of_date, asset_id, account_id)] = Decimal(price)
     return existing
 
 def diff_prices(desired: List[PriceRow], existing: Dict[Key, Decimal]):
@@ -143,6 +143,34 @@ def diff_prices(desired: List[PriceRow], existing: Dict[Key, Decimal]):
 
     return to_insert, to_update, unchanged
 
+def upsert_prices(conn: psycopg.Connection, rows: List[PriceRow]) -> None:
+    if not rows:
+        print("No rows to upsert.")
+        return
+
+    sql = """
+        INSERT INTO prices_snapshots (as_of_date, asset_id, account_id, quote_currency, price, source, fetched_at)
+        VALUES (%(as_of_date)s, %(asset_id)s, %(account_id)s, %(quote_currency)s, %(price)s, %(source)s, NOW())
+        ON CONFLICT (as_of_date, asset_id, account_id) DO UPDATE
+        SET price = EXCLUDED.price, quote_currency = EXCLUDED.quote_currency, source = EXCLUDED.source, fetched_at = NOW()
+        WHERE prices_snapshots.price IS DISTINCT FROM EXCLUDED.price OR prices_snapshots.quote_currency IS DISTINCT FROM EXCLUDED.quote_currency
+    """
+
+    payload = [
+        {
+            "as_of_date": r.as_of_date,
+            "asset_id": r.asset_id,
+            "account_id": r.account_id,
+            "quote_currency": r.quote_currency,
+            "price": r.price,
+            "source": r.source,
+        }
+        for r in rows
+    ]
+
+    with conn.cursor() as cur:
+        cur.executemany(sql, payload)
+
 # ----------------------------
 # Main
 # ----------------------------
@@ -155,7 +183,7 @@ def main() -> None:
     assets = load_assets(ASSETS_PATH)
     by_ticker = { a.yfinance_symbol: a for a in assets if a.yfinance_symbol }
     validate_csv_tickers_against_assets(tickers, by_ticker)
-    print(f"assets.json OK")
+    print(f"assets.json OK.")
 
     desired = build_price_rows(df, by_ticker)
     keys = [(r.as_of_date, r.asset_id, r.account_id) for r in desired] 
@@ -167,14 +195,15 @@ def main() -> None:
     try: 
         with psycopg.connect(db_url) as conn:
             with conn.cursor() as cur:
-                cur.execute("SELECT 1;")
-                val = cur.fetchone()
-            print(f"Successfully connected to database")
+                existing = fetch_existing_prices(conn, keys)
+                print(f"Found {len(existing)} existing price entries matching CSV data.")
 
-            existing = fetch_existing_prices(conn, keys)
-            print(f"Found {len(existing)} existing price entries matching CSV data")
-            to_insert, to_update, unchanged = diff_prices(desired, existing)
-            print(f"Plan: insert {len(to_insert)}, update {len(to_update)}, unchanged {unchanged}")
+                to_insert, to_update, unchanged = diff_prices(desired, existing)
+                print(f"Plan: insert {len(to_insert)}, update {len(to_update)}, unchanged {unchanged}.")
+
+                upsert_prices(conn, desired)
+                conn.commit()
+                print(f"Upsert complete.")
 
     except Exception as e:
         print(f"  ! error connecting to database: {e}")
