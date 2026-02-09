@@ -4,6 +4,7 @@ import time
 import random
 from pathlib import Path
 from typing import Any, Dict, List
+from utils.load_assets import Asset, load_assets
 
 import yfinance as yf
 import pandas as pd
@@ -55,36 +56,6 @@ def is_cache_fresh(path: Path) -> bool:
     return path.exists() and cache_age_seconds(path) < CACHE_TTL_SECONDS
 
 # ----------------------------
-# Helpers: assets.json parsing
-# ----------------------------
-
-def load_tickers(assets_path: Path) -> List[str]:
-    """
-    Load assets.json and return only entries that have a yfinance_symbol.
-    Also validates that required keys exist.
-    """
-    raw = json.loads(assets_path.read_text(encoding="utf-8"))
-    if not isinstance(raw, list):
-        raise ValueError(f"Expected a list of assets in {assets_path}, got {type(raw)}")
-
-    tickers: List[str] = []
-    for a in raw:
-        if not isinstance(a, dict):
-            continue
-
-        ticker = a.get("yfinance_symbol")
-        if not ticker:
-            continue
-
-        for key in ("asset_id", "account_id", "quote_currency"):
-            if key not in a:
-                raise ValueError(f"Asset entry {a} is missing required key '{key}'")
-
-        tickers.append(ticker)
-
-    return tickers
-
-# ----------------------------
 # Helpers: fetching + normalization
 # ----------------------------
 
@@ -129,14 +100,18 @@ def normalize(df: pd.DataFrame, ticker: str) -> pd.DataFrame:
 # ----------------------------
 
 def main() -> None:
-    tickers = load_tickers(ASSETS_PATH)
-    print(f"Loaded {len(tickers)} tickers from {ASSETS_PATH}")
+    assets = load_assets(ASSETS_PATH)
+    print(f"Loaded {len(assets)} assets from {ASSETS_PATH}")
     force_refresh = env_bool("FORCE_REFRESH", default=False)
     print(f"FORCE_REFRESH={force_refresh}")
 
     all_rows: List[pd.DataFrame] = []
 
-    for ticker in tickers: 
+    for asset in assets: 
+        ticker = asset.yfinance_symbol
+        if not ticker:
+            continue
+
         cache_path = CACHE_DIR / f"{ticker.replace('.', '_')}.csv"
 
         if is_cache_fresh(cache_path) and not force_refresh:
