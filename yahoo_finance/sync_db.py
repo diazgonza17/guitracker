@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import os
 import sys
+import json
+from datetime import datetime, timezone
 from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
@@ -14,6 +16,8 @@ import psycopg
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ASSETS_PATH = REPO_ROOT / "assets.json"
 CSV_PATH = REPO_ROOT / "out" / "yahoo_finance_tickers_eod.csv"
+LOG_DIR = REPO_ROOT / "out" / "logs"
+LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 @dataclass(frozen=True)
 class PriceRow: 
@@ -171,6 +175,20 @@ def upsert_prices(conn: psycopg.Connection, rows: List[PriceRow]) -> None:
     with conn.cursor() as cur:
         cur.executemany(sql, payload)
 
+
+# ----------------------------
+# Helpers: logging
+# ----------------------------
+
+def utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+def write_jsonl(path: Path, events: List[dict]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as fp:
+        for event in events:
+            fp.write(json.dumps(event, ensure_ascii=False) + "\n")
+
 # ----------------------------
 # Main
 # ----------------------------
@@ -200,6 +218,55 @@ def main() -> None:
 
                 to_insert, to_update, unchanged = diff_prices(desired, existing)
                 print(f"Plan: insert {len(to_insert)}, update {len(to_update)}, unchanged {unchanged}.")
+
+                run_id = os.getenv("RUN_ID")
+                log_path = LOG_DIR / f"yahoo_finance_sync_{run_id}.jsonl"
+                print(f"Logging changes to {log_path}.")
+
+                events: List[dict] = []
+
+                for r in to_insert:
+                    events.append({
+                        "ts": utc_now_iso(),
+                        "run_id": run_id,
+                        "action": "insert",
+                        "as_of_date": str(r.as_of_date),
+                        "asset_id": r.asset_id,
+                        "account_id": r.account_id,
+                        "quote_currency": r.quote_currency,
+                        "old_price": None,
+                        "new_price": str(r.price),
+                        "source": r.source,
+                    })
+
+                for r, old_price in to_update:
+                    events.append({
+                        "ts": utc_now_iso(),
+                        "run_id": run_id,
+                        "action": "update",
+                        "as_of_date": str(r.as_of_date),
+                        "asset_id": r.asset_id,
+                        "account_id": r.account_id,
+                        "quote_currency": r.quote_currency,
+                        "old_price": str(old_price),
+                        "new_price": str(r.price),
+                        "source": r.source,
+                    })
+
+                events.append({
+                    "ts": utc_now_iso(),
+                    "run_id": run_id,
+                    "action": "summary",
+                    "csv_rows": len(df),
+                    "existing_matched": len(existing),
+                    "inserted": len(to_insert),
+                    "updated": len(to_update),
+                    "unchanged": unchanged,
+                    "date_min": str(df["date"].min()),
+                    "date_max": str(df["date"].max()),
+                })
+
+                write_jsonl(log_path, events)
 
                 upsert_prices(conn, desired)
                 conn.commit()
