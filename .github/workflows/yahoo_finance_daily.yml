@@ -1,0 +1,62 @@
+name: yahoo_finance_daily
+
+on:
+  schedule:
+    - cron: "0 0 * * *" # Runs every day at midnight
+
+  workflow_dispatch:
+    inputs:
+      force_refresh:
+        description: "Force refresh (ignore cache)"
+        required: false
+        default: "false"
+      start_date:
+        description: "Backfill start date (YYYY-MM-DD)"
+        required: false
+        default: ""
+      end_date:
+        description: "Backfill end date (YYYY-MM-DD)"
+        required: false
+        default: ""
+
+  concurrency:
+    group: yahoo_finance_daily
+    cancel-in-progress: true
+
+  jobs:
+    run:
+      runs-on: ubuntu-latest
+      timeout-minutes: 20
+      env:
+        DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        FORCE_REFRESH: ${{ github.event.inputs.force_refresh }}
+        START_DATE: ${{ github.event.inputs.start_date }}
+        END_DATE: ${{ github.event.inputs.end_date }}
+        PYTHONUNBUFFERED: 1
+      steps:
+        - name: Checkout
+          uses: actions/checkout@v6
+        - name: Setup Python
+          uses: actions/setup-python@v6
+          with:
+            python-version: "3.12"
+            cache: "pip"
+        - name: Install dependencies
+          run: |
+            python -m pip install --upgrade pip
+            pip install -r requirements.txt
+        - name: Run Yahoo Finance Daily
+          run: |
+            echo "FORCE_REFRESH=${FORCE_REFRESH}"
+            echo "START_DATE=${START_DATE}"
+            echo "END_DATE=${END_DATE}"
+            python -m yahoo_finance.run_daily
+        - name: Upload artifacts (CSV + logs)
+          if: always()
+          uses: actions/upload-artifact@v6
+          with:
+            name: yahoo-finance-out
+            path: |
+              out/yahoo_finance_tickers_eod.csv
+              out/logs/*.jsonl
+            if-no-files-found: warn
