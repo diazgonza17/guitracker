@@ -29,7 +29,7 @@ jobs:
     timeout-minutes: 20
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
-      FORCE_REFRESH: ${{ github.event.inputs.force_refresh }}
+      FORCE_REFRESH: ${{ github.event.inputs.force_refresh || 'false'}}
       START_DATE: ${{ github.event.inputs.start_date }}
       END_DATE: ${{ github.event.inputs.end_date }}
       PYTHONUNBUFFERED: 1
