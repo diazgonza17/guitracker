@@ -10,7 +10,7 @@ from yahoo_finance.sync_db import main as sync_db
 def make_run_id() -> str:
     start = os.getenv("START_DATE") or None
     end = os.getenv("END_DATE") or None
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%SZ")
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M-%SZ")
     if start and end:
         return f"{now}__start-{start}_end-{end}"
     else:

@@ -54,28 +54,30 @@ def env_date(name: str) -> date | None:
 def cache_age_seconds(path: Path) -> float:
     if not path.exists():
         return float("inf")
-
     return time.time() - path.stat().st_mtime
 
 def is_cache_fresh(path: Path) -> bool:
     return path.exists() and cache_age_seconds(path) < CACHE_TTL_SECONDS
 
-def generate_cache_key(ticker: str, interval: str, period: str, start_date: date | None, end_date: date | None) -> str:
+def generate_cache_key(ticker: str, start_date: date | None, end_date: date | None) -> str:
     safe_ticker = ticker.replace(".", "_")
+    # TODO: if we add the XOR safeguard for date bounds, here we wouldnt need the if ... else "none" thing
     if start_date and end_date:
         start = start_date.isoformat() if start_date else "none"
         end = end_date.isoformat() if end_date else "none"
-        return f"{safe_ticker}__interval-{interval}__start-{start}__end-{end}"
+        return f"{safe_ticker}__interval-{INTERVAL}__start-{start}__end-{end}"
     else:
-        return f"{safe_ticker}__interval-{interval}__period-{period}"
+        return f"{safe_ticker}__interval-{INTERVAL}__period-{PERIOD}"
 
 # ----------------------------
-# Helpers: fetching + normalization
+# Helpers: API
 # ----------------------------
 
 def download_with_retries(ticker: str, start_date: date | None = None, end_date: date | None = None) -> pd.DataFrame:
+    # TODO: we could move retrier logic (aside from the fetch itself, the yf.download) to a helper in utils
     for attempt in range(1, MAX_RETRIES + 1):
         try:
+            # TODO: shouldnt we make the params outside the for loop?
             params = dict(interval=INTERVAL, progress=False, threads=False)
             if start_date and end_date:
                 params["start"] = start_date.strftime("%Y-%m-%d")
@@ -108,11 +110,16 @@ def normalize(df: pd.DataFrame, ticker: str) -> pd.DataFrame:
 # ----------------------------
 
 def main() -> None:
+    # TODO: should we filter right after we load them by the ones which have 'yfinance_symbol'? 
+    # TODO: could that filtering by keys presence be done directly in the utils passing a param?
     assets = load_assets(ASSETS_PATH)
     print(f"Loaded {len(assets)} assets from {ASSETS_PATH}")
-    force_refresh = env_bool("FORCE_REFRESH", default=False)
+
+    # TODO: could we get and print all env vars from a helper in utils?
+    force_refresh = env_bool("FORCE_REFRESH")
     start_date = env_date("START_DATE")
     end_date = env_date("END_DATE")
+    # TODO: should we add the safeguard when passing only one date bound?
     print(f"FORCE_REFRESH={force_refresh} START_DATE={start_date} END_DATE={end_date}")
 
     all_rows: List[pd.DataFrame] = []
@@ -122,7 +129,8 @@ def main() -> None:
         if not ticker:
             continue
 
-        cache_key = generate_cache_key(ticker, INTERVAL, PERIOD, start_date, end_date)
+        # TODO: should we move cache path generation to a helper in utils?
+        cache_key = generate_cache_key(ticker, start_date, end_date)
         cache_path = CACHE_DIR / f"{cache_key}.csv"
 
         if is_cache_fresh(cache_path) and not force_refresh:
@@ -139,6 +147,7 @@ def main() -> None:
             continue
 
         out = normalize(df, ticker)
+        # TODO: should we check for emptyness here?
         out.to_csv(cache_path, index=False)
         all_rows.append(out)
         time.sleep(random.uniform(0.0, 1.0))  # Sleep to avoid hitting rate limits
@@ -148,9 +157,7 @@ def main() -> None:
 
     final_df = pd.concat(all_rows, ignore_index=True)
     final_df = final_df.sort_values(by=["ticker", "date"], ascending=[True, True])
-
     final_df.to_csv(OUT_PATH, index=False)
-
     print(f"Wrote {len(final_df)} rows to {OUT_PATH}")
 
 if __name__ == "__main__":

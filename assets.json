@@ -14,6 +14,13 @@
     "twelvedata_exchange": "BINANCE"
   },
   {
+    "asset_id": "TTWO",
+    "account_id": "bullmarket-us",
+    "quote_currency": "USD",
+    "twelvedata_symbol": "TTWO",
+    "twelvedata_exchange": "NASDAQ"
+  },
+  {
     "asset_id": "AAPL",
     "account_id": "bullmarket",
     "quote_currency": "ARS",

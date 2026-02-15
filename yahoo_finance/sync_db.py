@@ -16,7 +16,7 @@ import psycopg
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ASSETS_PATH = REPO_ROOT / "assets.json"
 CSV_PATH = REPO_ROOT / "out" / "yahoo_finance_tickers_eod.csv"
-LOG_DIR = REPO_ROOT / "out" / "logs"
+LOG_DIR = REPO_ROOT / "out"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 @dataclass(frozen=True)
