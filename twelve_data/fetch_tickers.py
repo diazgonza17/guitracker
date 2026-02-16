@@ -13,43 +13,20 @@ import requests
 
 from utils.assets import load_assets
 from utils.envs import get_envs
+from utils.cache import is_cache_fresh, cache_age_seconds, generate_cache_path
 
 BASE_URL = "https://api.twelvedata.com"
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ASSETS_PATH = REPO_ROOT / "assets.json"
 CACHE_DIR = REPO_ROOT / "twelve_data" / "cache"
-CACHE_DIR.mkdir(parents=True, exist_ok=True)
 OUT_PATH = REPO_ROOT / "out" / "twelve_data_time_series_1day.csv"
-OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
 
-CACHE_TTL_SECONDS = 60 * 60 * 24 # 24 hours
+OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 OUTPUT_SIZE = "30" # 30 days
 INTERVAL = "1day"
 MAX_RETRIES = 4
-
-# ----------------------------
-# Helpers: cache
-# ----------------------------
-
-def cache_age_seconds(path: Path) -> float:
-    if not path.exists():
-        return float("inf")
-    return time.time() - path.stat().st_mtime
-
-def is_cache_fresh(path: Path) -> bool:
-    return path.exists() and cache_age_seconds(path) < CACHE_TTL_SECONDS
-
-def generate_cache_key(symbol: str, exchange: Optional[str], start_date: date | None, end_date: date | None) -> str:
-    safe_symbol = symbol.replace("/", "_").replace(".", "_")
-    safe_exchange = (exchange or "none").replace("/", "_").replace(".", "_")
-
-    if start_date and end_date:
-        return f"{safe_symbol}-{safe_exchange}__interval-{INTERVAL}__start-{start_date.isoformat()}__end-{end_date.isoformat()}"
-    else: 
-        return f"{safe_symbol}-{safe_exchange}__interval-{INTERVAL}__outputsize-{OUTPUT_SIZE}"
-
 
 # ----------------------------
 # Helpers: API
@@ -155,7 +132,6 @@ def main() -> None:
     print(f"Loaded {len(assets)} assets from {ASSETS_PATH}")
     if (start_date is None) ^ (end_date is None):
         raise SystemExit("If ussing date bounds, you must set both START_DATE and END_DATE (YYYY-MM-DD)")
-    print(f"FORCE_REFRESH={force_refresh} START_DATE={start_date} END_DATE={end_date}")
 
     all_rows: List[pd.DataFrame] = []
 
@@ -166,8 +142,14 @@ def main() -> None:
         if not symbol or not exchange:
             continue
 
-        cache_key = generate_cache_key(symbol, exchange, start_date, end_date)
-        cache_path = CACHE_DIR / f"{cache_key}.csv"
+        parts: Dict[str, Any] = { "exchange": exchange, "interval": INTERVAL}
+        if start_date and end_date:
+            parts["start"] = start_date.isoformat()
+            parts["end"] = end_date.isoformat()
+        else:
+            parts["output_size"] = OUTPUT_SIZE
+        
+        cache_path = generate_cache_path(CACHE_DIR, prefix=symbol, parts=parts, ext="csv")
 
         if is_cache_fresh(cache_path) and not force_refresh:
             print(f"Loading cache for {symbol:<12} exchange={exchange or '-':<8} -> {cache_path} (age {cache_age_seconds(cache_path)/60:.1f} min)")

@@ -11,41 +11,18 @@ import pandas as pd
 
 from utils.assets import Asset, load_assets
 from utils.envs import get_envs
+from utils.cache import is_cache_fresh, cache_age_seconds, generate_cache_path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ASSETS_PATH = REPO_ROOT / "assets.json"
 CACHE_DIR = REPO_ROOT / "yahoo_finance" / "cache"
-CACHE_DIR.mkdir(parents=True, exist_ok=True)
 OUT_PATH = REPO_ROOT / "out" / "yahoo_finance_tickers_eod.csv"
-OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
 
-CACHE_TTL_SECONDS = 60 * 60 * 24  # 24 hours
+OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 PERIOD = "1mo"
 INTERVAL = "1d"
 MAX_RETRIES = 4
-
-# ----------------------------
-# Helpers: cache
-# ----------------------------
-
-def cache_age_seconds(path: Path) -> float:
-    if not path.exists():
-        return float("inf")
-    return time.time() - path.stat().st_mtime
-
-def is_cache_fresh(path: Path) -> bool:
-    return path.exists() and cache_age_seconds(path) < CACHE_TTL_SECONDS
-
-def generate_cache_key(ticker: str, start_date: date | None, end_date: date | None) -> str:
-    safe_ticker = ticker.replace(".", "_")
-    # TODO: if we add the XOR safeguard for date bounds, here we wouldnt need the if ... else "none" thing
-    if start_date and end_date:
-        start = start_date.isoformat() if start_date else "none"
-        end = end_date.isoformat() if end_date else "none"
-        return f"{safe_ticker}__interval-{INTERVAL}__start-{start}__end-{end}"
-    else:
-        return f"{safe_ticker}__interval-{INTERVAL}__period-{PERIOD}"
 
 # ----------------------------
 # Helpers: API
@@ -98,10 +75,6 @@ def main() -> None:
     assets = load_assets(ASSETS_PATH)
     print(f"Loaded {len(assets)} assets from {ASSETS_PATH}")
 
-    # TODO: could we get and print all env vars from a helper in utils?
-    # TODO: should we add the safeguard when passing only one date bound?
-    print(f"FORCE_REFRESH={force_refresh} START_DATE={start_date} END_DATE={end_date}")
-
     all_rows: List[pd.DataFrame] = []
 
     for asset in assets: 
@@ -109,9 +82,14 @@ def main() -> None:
         if not ticker:
             continue
 
-        # TODO: should we move cache path generation to a helper in utils?
-        cache_key = generate_cache_key(ticker, start_date, end_date)
-        cache_path = CACHE_DIR / f"{cache_key}.csv"
+        parts: Dict[str, Any] = {"interval": INTERVAL}
+        if start_date and end_date:
+            parts["start"] = start_date.isoformat()
+            parts["end"] = end_date.isoformat()
+        else:
+            parts["period"] = PERIOD
+
+        cache_path = generate_cache_path(CACHE_DIR, prefix=ticker, parts=parts, ext="csv")
 
         if is_cache_fresh(cache_path) and not force_refresh:
             print(f"Loading cache for {ticker:<10} -> {cache_path} (age {cache_age_seconds(cache_path)/60:.1f} min)")

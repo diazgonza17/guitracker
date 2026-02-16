@@ -34,10 +34,14 @@ def _validate_date_bounds(data: Dict[str, Any]) -> None:
             raise ValueError("START_DATE must be before END_DATE")
 
 def _log_public_envs(data: Dict[str, Any]) -> None:
+    msg_parts = []
     for env_name, spec in _ENV_SPECS.items():
         if spec.get("secret", False):
             continue
-        print(f"{env_name}={data[env_name]}")    
+        msg_parts.append(f"{env_name}={data[env_name]}")
+    
+    if msg_parts:
+        print(" ".join(msg_parts))
 
 @dataclass(frozen=True)
 class Envs:
