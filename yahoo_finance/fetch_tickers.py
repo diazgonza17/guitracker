@@ -5,10 +5,12 @@ import random
 from datetime import date
 from pathlib import Path
 from typing import Any, Dict, List
-from utils.load_assets import Asset, load_assets
 
 import yfinance as yf
 import pandas as pd
+
+from utils.assets import Asset, load_assets
+from utils.envs import get_envs
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ASSETS_PATH = REPO_ROOT / "assets.json"
@@ -22,30 +24,6 @@ CACHE_TTL_SECONDS = 60 * 60 * 24  # 24 hours
 PERIOD = "1mo"
 INTERVAL = "1d"
 MAX_RETRIES = 4
-
-# ----------------------------
-# Helpers: env
-# ----------------------------
-
-def env_bool(name: str, default: bool = False) -> bool:
-    val = os.getenv(name)
-    if val is None:
-        return default
-    if val.lower() in ("1", "true", "yes", "on") :
-        return True
-    if val.lower() in ("0", "false", "no", "off"):
-        return False
-    raise ValueError(f"Invalid boolean value for {name}: {val}")
-
-def env_date(name: str) -> date | None:
-    val = os.getenv(name)
-    if not val:
-        return None
-    try:
-        return pd.to_datetime(val, format="%Y-%m-%d").date()
-    except Exception as e:
-        raise ValueError(f"Invalid date value for {name}: {val}") from e
-
 
 # ----------------------------
 # Helpers: cache
@@ -110,15 +88,17 @@ def normalize(df: pd.DataFrame, ticker: str) -> pd.DataFrame:
 # ----------------------------
 
 def main() -> None:
+    envs = get_envs()
+    force_refresh = envs.force_refresh
+    start_date = envs.start_date
+    end_date = envs.end_date
+
     # TODO: should we filter right after we load them by the ones which have 'yfinance_symbol'? 
     # TODO: could that filtering by keys presence be done directly in the utils passing a param?
     assets = load_assets(ASSETS_PATH)
     print(f"Loaded {len(assets)} assets from {ASSETS_PATH}")
 
     # TODO: could we get and print all env vars from a helper in utils?
-    force_refresh = env_bool("FORCE_REFRESH")
-    start_date = env_date("START_DATE")
-    end_date = env_date("END_DATE")
     # TODO: should we add the safeguard when passing only one date bound?
     print(f"FORCE_REFRESH={force_refresh} START_DATE={start_date} END_DATE={end_date}")
 

@@ -11,7 +11,8 @@ from typing import Any, Dict, List, Optional
 import pandas as pd
 import requests
 
-from utils.load_assets import load_assets
+from utils.assets import load_assets
+from utils.envs import get_envs
 
 BASE_URL = "https://api.twelvedata.com"
 
@@ -27,29 +28,6 @@ CACHE_TTL_SECONDS = 60 * 60 * 24 # 24 hours
 OUTPUT_SIZE = "30" # 30 days
 INTERVAL = "1day"
 MAX_RETRIES = 4
-
-# ----------------------------
-# Helpers: env
-# ----------------------------
-
-def env_bool(name: str, default: bool = False) -> bool:
-    val = os.getenv(name)
-    if val is None:
-        return default
-    if val.lower() in ("1", "true", "yes", "on") :
-        return True
-    if val.lower() in ("0", "false", "no", "off"):
-        return False
-    raise ValueError(f"Invalid boolean value for {name}: {val}")
-
-def env_date(name: str) -> date | None:
-    val = os.getenv(name)
-    if not val:
-        return None
-    try:
-        return pd.to_datetime(val, format="%Y-%m-%d").date()
-    except Exception as e:
-        raise ValueError(f"Invalid date value for {name}: {val}") from e
 
 # ----------------------------
 # Helpers: cache
@@ -167,16 +145,14 @@ def normalize(payload: Dict[str, Any], symbol: str, exchange: Optional[str]) -> 
 # ----------------------------
 
 def main() -> None:
-    # TODO: could we make a helper in utils to get the apikey, and then call it inside the request_time_series_with_retries?
-    api_key = os.getenv("TWELVEDATA_API_KEY")
-    if not api_key:
-        raise SystemExit("Missing TWELVEDATA_API_KEY environment variable")
-    
+    envs = get_envs(required_envs=["TWELVEDATA_API_KEY"])
+    api_key = envs.twelvedata_api_key
+    force_refresh = envs.force_refresh
+    start_date = envs.start_date
+    end_date = envs.end_date
+
     assets = load_assets(ASSETS_PATH)
     print(f"Loaded {len(assets)} assets from {ASSETS_PATH}")
-    force_refresh = env_bool("FORCE_REFRESH")
-    start_date = env_date("START_DATE")
-    end_date = env_date("END_DATE")
     if (start_date is None) ^ (end_date is None):
         raise SystemExit("If ussing date bounds, you must set both START_DATE and END_DATE (YYYY-MM-DD)")
     print(f"FORCE_REFRESH={force_refresh} START_DATE={start_date} END_DATE={end_date}")

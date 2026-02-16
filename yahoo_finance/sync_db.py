@@ -8,10 +8,11 @@ from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
 from typing import Dict, Iterable, List, Tuple
-from utils.load_assets import Asset, load_assets
 
 import pandas as pd
 import psycopg
+
+from utils.assets import Asset, load_assets
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ASSETS_PATH = REPO_ROOT / "assets.json"
