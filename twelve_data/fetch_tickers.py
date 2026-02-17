@@ -14,6 +14,7 @@ import requests
 from utils.assets import load_assets
 from utils.envs import get_envs
 from utils.cache import is_cache_fresh, cache_age_seconds, generate_cache_path
+from utils.retry import retry_with_backoff
 
 BASE_URL = "https://api.twelvedata.com"
 
@@ -26,22 +27,33 @@ OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 OUTPUT_SIZE = "30" # 30 days
 INTERVAL = "1day"
-MAX_RETRIES = 4
 
-# ----------------------------
-# Helpers: API
-# ----------------------------
+def _get_cached_data(symbol: str, exchange: Optional[str], start_date: date | None, end_date: date | None, force_refresh: bool) -> tuple[Path, pd.DataFrame | None]:
+    parts: Dict[str, Any] = {"exchange": exchange, "interval": INTERVAL}
+    if start_date and end_date:
+        parts["start"] = start_date.isoformat()
+        parts["end"] = end_date.isoformat()
+    else:
+        parts["output_size"] = OUTPUT_SIZE
+    
+    cache_path = generate_cache_path(CACHE_DIR, prefix=symbol, parts=parts, ext="csv")
+    
+    if is_cache_fresh(cache_path) and not force_refresh:
+        print(f"Loading cache for {symbol:<12} exchange={exchange or '-':<8} -> {cache_path} (age {cache_age_seconds(cache_path)/60:.1f} min)")
+        return cache_path, pd.read_csv(cache_path)
+    
+    return cache_path, None
 
-def make_headers(api_key: str) -> Dict[str, str]:
+def _make_headers(api_key: str) -> Dict[str, str]:
     return {
         "Authorization": f"apikey {api_key}",
         "Accept": "application/json",
         "User-Agent": "portfolio-pipeline/1.0"
     }
 
-def request_time_series_with_retries(api_key: str, symbol: str, exchange: Optional[str], start_date: date | None, end_date: date | None) -> Dict[str, Any]:
+def _request_time_series(api_key: str, symbol: str, exchange: Optional[str], start_date: date | None, end_date: date | None) -> Dict[str, Any]:
     url = f"{BASE_URL}/time_series"
-    headers = make_headers(api_key)
+    headers = _make_headers(api_key)
 
     params: Dict[str, Any] = {
         "symbol": symbol, 
@@ -57,25 +69,22 @@ def request_time_series_with_retries(api_key: str, symbol: str, exchange: Option
     if exchange:
         params["exchange"] = exchange
 
-    for attempt in range(1, MAX_RETRIES + 1):
-        try: 
-            print(f"GET {url} symbol={symbol} exchange={exchange or '-'} attempt={attempt}/{MAX_RETRIES}")
-            r = requests.get(url, params=params, headers=headers, timeout=30)
-            print(f"HTTP {r.status_code}")
+    def fetch(): 
+        r = requests.get(url, params=params, headers=headers, timeout=30)
+        print(f"HTTP {r.status_code}")
 
-            data = r.json()
-            if data.get("status") == "error":
-                raise RuntimeError(f"Twelve Data error: {data}")    
-            return data
-        except Exception as e:
-            wait = (2 ** (attempt - 1)) + random.uniform(0.0, 1.0)
-            print(f"  ! error for <{symbol:<12}> exchange={'-' if not exchange else exchange:<8}: {e}")
-            print(f"    -> sleeping {wait:.2f}s before retrying...")
-            time.sleep(wait)
+        data = r.json()
+        if data.get("status") == "error":
+            raise RuntimeError(f"Twelve Data error: {data}")    
+        return data
+
+    identifier = f"{symbol} exchange={exchange or '-'}"
+    payload = retry_with_backoff(fetch, identifier=identifier, jitter=False)
+    return payload or {}
     
     return {}
 
-def normalize(payload: Dict[str, Any], symbol: str, exchange: Optional[str]) -> pd.DataFrame:
+def _normalize(payload: Dict[str, Any], symbol: str, exchange: Optional[str]) -> pd.DataFrame:
     meta = payload.get("meta") or {}
     values = payload.get("values") or []
     
@@ -130,48 +139,33 @@ def main() -> None:
 
     assets = load_assets(ASSETS_PATH)
     print(f"Loaded {len(assets)} assets from {ASSETS_PATH}")
-    if (start_date is None) ^ (end_date is None):
-        raise SystemExit("If ussing date bounds, you must set both START_DATE and END_DATE (YYYY-MM-DD)")
 
     all_rows: List[pd.DataFrame] = []
 
     for asset in assets:
         symbol = asset.twelvedata_symbol
         exchange = asset.twelvedata_exchange
-
-        if not symbol or not exchange:
+        if not symbol:
             continue
 
-        parts: Dict[str, Any] = { "exchange": exchange, "interval": INTERVAL}
-        if start_date and end_date:
-            parts["start"] = start_date.isoformat()
-            parts["end"] = end_date.isoformat()
-        else:
-            parts["output_size"] = OUTPUT_SIZE
-        
-        cache_path = generate_cache_path(CACHE_DIR, prefix=symbol, parts=parts, ext="csv")
-
-        if is_cache_fresh(cache_path) and not force_refresh:
-            print(f"Loading cache for {symbol:<12} exchange={exchange or '-':<8} -> {cache_path} (age {cache_age_seconds(cache_path)/60:.1f} min)")
-            df = pd.read_csv(cache_path)
-            all_rows.append(df)
+        cache_path, cached_df = _get_cached_data(symbol, exchange, start_date, end_date, force_refresh)
+        if cached_df is not None:
+            all_rows.append(cached_df)
             continue
         
-        print(f"Fetching {symbol} exchange={exchange or '-'}")
-
-        payload = request_time_series_with_retries(api_key=api_key, symbol=symbol, exchange=exchange, start_date=start_date, end_date=end_date)
+        print(f"Fetching {symbol} exchange={exchange or '-'}...")
+        payload = _request_time_series(api_key, symbol, exchange, start_date, end_date)
         if not payload:
-            print(f"  WARNING: empty payload for {symbol} exchange={exchange or '-'}, skipping.")
+            print(f"  WARNING: no data returned for <{symbol:<10} exchange={exchange or '-'}>, skipping.")
             continue
         
-        out = normalize(payload, symbol=symbol, exchange=exchange)
+        out = _normalize(payload, symbol, exchange)
         if out.empty: 
-            print(f"  WARNING: no values for {symbol} exchange={exchange or '-'}, skipping")
+            print(f"  WARNING: no values for <{symbol:<10} exchange={exchange or '-'}>, skipping")
             continue
-        
+            
         out.to_csv(cache_path, index=False)
         all_rows.append(out)
-        time.sleep(random.uniform(0.0, 1.0))
     
     if not all_rows:
         raise SystemExit("No data fetched for any symbol.")

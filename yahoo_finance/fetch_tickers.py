@@ -12,6 +12,7 @@ import pandas as pd
 from utils.assets import Asset, load_assets
 from utils.envs import get_envs
 from utils.cache import is_cache_fresh, cache_age_seconds, generate_cache_path
+from utils.retry import retry_with_backoff
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ASSETS_PATH = REPO_ROOT / "assets.json"
@@ -22,35 +23,37 @@ OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 PERIOD = "1mo"
 INTERVAL = "1d"
-MAX_RETRIES = 4
 
-# ----------------------------
-# Helpers: API
-# ----------------------------
+def _get_cached_data(ticker: str, start_date: date | None, end_date: date | None, force_refresh: bool) -> tuple[Path, pd.DataFrame | None]:
+    parts: Dict[str, Any] = {"interval": INTERVAL}
+    if start_date and end_date:
+        parts["start"] = start_date.isoformat()
+        parts["end"] = end_date.isoformat()
+    else:
+        parts["period"] = PERIOD
+    
+    cache_path = generate_cache_path(CACHE_DIR, prefix=ticker, parts=parts, ext="csv")
+    
+    if is_cache_fresh(cache_path) and not force_refresh:
+        print(f"Loading cache for {ticker:<10} -> {cache_path} (age {cache_age_seconds(cache_path)/60:.1f} min)")
+        return cache_path, pd.read_csv(cache_path)
+    
+    return cache_path, None
 
-def download_with_retries(ticker: str, start_date: date | None = None, end_date: date | None = None) -> pd.DataFrame:
-    # TODO: we could move retrier logic (aside from the fetch itself, the yf.download) to a helper in utils
-    for attempt in range(1, MAX_RETRIES + 1):
-        try:
-            # TODO: shouldnt we make the params outside the for loop?
-            params = dict(interval=INTERVAL, progress=False, threads=False)
-            if start_date and end_date:
-                params["start"] = start_date.strftime("%Y-%m-%d")
-                params["end"] = end_date.strftime("%Y-%m-%d")
-            else:
-                params["period"] = PERIOD
+def _download_close_prices(ticker: str, start_date: date | None = None, end_date: date | None = None) -> pd.DataFrame:
+    params = dict(interval=INTERVAL, progress=False, threads=False)
+    if start_date and end_date:
+        params["start"] = start_date.strftime("%Y-%m-%d")
+        params["end"] = end_date.strftime("%Y-%m-%d")
+    else:
+        params["period"] = PERIOD
+    
+    df = retry_with_backoff(lambda: yf.download(ticker, **params), identifier=ticker)
+    if df is None or df.empty:
+        return pd.DataFrame()
+    return df
 
-            df = yf.download(ticker, **params)
-            return df
-        except Exception as e:
-            wait = (2 ** (attempt - 1)) + random.uniform(0.0, 1.0) # Exponential backoff with jitter
-            print(f"  ! error for <{ticker:<10}> (attempt {attempt}/{MAX_RETRIES}): {e}")
-            print(f"    -> sleeping {wait:.2f}s before retrying...")
-            time.sleep(wait)
-
-    return pd.DataFrame()  # Return empty DataFrame if all retries fail
-
-def normalize(df: pd.DataFrame, ticker: str) -> pd.DataFrame:
+def _normalize(df: pd.DataFrame, ticker: str) -> pd.DataFrame:
     df = df.reset_index()
     df.columns = [c[0] if isinstance(c, tuple) else c for c in df.columns]
 
@@ -82,30 +85,22 @@ def main() -> None:
         if not ticker:
             continue
 
-        parts: Dict[str, Any] = {"interval": INTERVAL}
-        if start_date and end_date:
-            parts["start"] = start_date.isoformat()
-            parts["end"] = end_date.isoformat()
-        else:
-            parts["period"] = PERIOD
-
-        cache_path = generate_cache_path(CACHE_DIR, prefix=ticker, parts=parts, ext="csv")
-
-        if is_cache_fresh(cache_path) and not force_refresh:
-            print(f"Loading cache for {ticker:<10} -> {cache_path} (age {cache_age_seconds(cache_path)/60:.1f} min)")
-            df = pd.read_csv(cache_path)
-            all_rows.append(df)
-            continue
+        cache_path, cached_df = _get_cached_data(ticker, start_date, end_date, force_refresh)
+        if cached_df is not None:
+             all_rows.append(cached_df)
+             continue
 
         print(f"Fetching {ticker}...")
-        df = download_with_retries(ticker, start_date=start_date, end_date=end_date)
-        
+        df = _download_close_prices(ticker, start_date, end_date)
         if df is None or df.empty:
             print(f"  WARNING: no data returned for <{ticker:<10}>, skipping.")
             continue
 
-        out = normalize(df, ticker)
-        # TODO: should we check for emptyness here?
+        out = _normalize(df, ticker)
+        if out.empty: 
+            print(f"  WARNING: no values for <{ticker:<10}>, skipping")
+            continue
+
         out.to_csv(cache_path, index=False)
         all_rows.append(out)
         time.sleep(random.uniform(0.0, 1.0))  # Sleep to avoid hitting rate limits
