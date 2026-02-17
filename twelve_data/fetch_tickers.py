@@ -138,16 +138,15 @@ def main() -> None:
     end_date = envs.end_date
 
     assets = load_assets(ASSETS_PATH)
-    print(f"Loaded {len(assets)} assets from {ASSETS_PATH}")
+    td_assets = [a for a in assets if a.twelvedata_symbol]
+    print(f"Loaded {len(td_assets)} twelve data assets (total: {len(assets)}) from {ASSETS_PATH}")
 
     all_rows: List[pd.DataFrame] = []
 
-    for asset in assets:
+    for asset in td_assets:
         symbol = asset.twelvedata_symbol
         exchange = asset.twelvedata_exchange
-        if not symbol:
-            continue
-
+        
         cache_path, cached_df = _get_cached_data(symbol, exchange, start_date, end_date, force_refresh)
         if cached_df is not None:
             all_rows.append(cached_df)

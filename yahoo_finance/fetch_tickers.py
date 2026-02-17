@@ -73,17 +73,14 @@ def main() -> None:
     start_date = envs.start_date
     end_date = envs.end_date
 
-    # TODO: should we filter right after we load them by the ones which have 'yfinance_symbol'? 
-    # TODO: could that filtering by keys presence be done directly in the utils passing a param?
     assets = load_assets(ASSETS_PATH)
-    print(f"Loaded {len(assets)} assets from {ASSETS_PATH}")
+    yf_assets = [a for a in assets if a.yfinance_symbol]
+    print(f"Loaded {len(yf_assets)} yahoo finance assets (total: {len(assets)}) from {ASSETS_PATH}")
 
     all_rows: List[pd.DataFrame] = []
 
-    for asset in assets: 
+    for asset in yf_assets: 
         ticker = asset.yfinance_symbol
-        if not ticker:
-            continue
 
         cache_path, cached_df = _get_cached_data(ticker, start_date, end_date, force_refresh)
         if cached_df is not None:
