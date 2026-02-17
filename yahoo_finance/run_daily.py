@@ -4,7 +4,7 @@ import os
 import sys
 from datetime import datetime, timezone
 
-from yahoo_finance.fetch_tickers import main as fetch_tickers
+from yahoo_finance.fetch import main as fetch
 from yahoo_finance.sync_db import main as sync_db
 
 def make_run_id() -> str:
@@ -21,8 +21,8 @@ def main() -> None:
     os.environ["RUN_ID"] = run_id
     print(f"RUN_ID={run_id}")
 
-    print("== Step 1/2: fetch_tickers ==")
-    fetch_tickers()
+    print("== Step 1/2: fetch ==")
+    fetch()
 
     print("== Step 2/2: sync_db ==")
     sync_db()

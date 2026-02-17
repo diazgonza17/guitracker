@@ -60,5 +60,5 @@ jobs:
           name: yahoo_finance_out_${{ env.TIMESTAMP }}
           path: |
             out/yahoo_finance_tickers_eod.csv
-            out/logs/*.jsonl
+            out/*.jsonl
           if-no-files-found: warn

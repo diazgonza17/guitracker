@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
+from typing import Mapping, Any
 
 CACHE_TTL_SECONDS = 60 * 60 * 24  # 24 hours
 

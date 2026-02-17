@@ -29,7 +29,7 @@ OUTPUT_SIZE = "30" # 30 days
 INTERVAL = "1day"
 
 def _get_cached_data(symbol: str, exchange: Optional[str], start_date: date | None, end_date: date | None, force_refresh: bool) -> tuple[Path, pd.DataFrame | None]:
-    parts: Dict[str, Any] = {"exchange": exchange, "interval": INTERVAL}
+    parts: Dict[str, Any] = {"exchange": exchange or "none", "interval": INTERVAL}
     if start_date and end_date:
         parts["start"] = start_date.isoformat()
         parts["end"] = end_date.isoformat()
@@ -39,7 +39,7 @@ def _get_cached_data(symbol: str, exchange: Optional[str], start_date: date | No
     cache_path = generate_cache_path(CACHE_DIR, prefix=symbol, parts=parts, ext="csv")
     
     if is_cache_fresh(cache_path) and not force_refresh:
-        print(f"Loading cache for {symbol:<12} exchange={exchange or '-':<8} -> {cache_path} (age {cache_age_seconds(cache_path)/60:.1f} min)")
+        print(f"Loading cache for {symbol:<10} exchange={exchange or 'none':<10} -> {cache_path} (age {cache_age_seconds(cache_path)/60:.1f} min)")
         return cache_path, pd.read_csv(cache_path)
     
     return cache_path, None
@@ -78,11 +78,9 @@ def _request_time_series(api_key: str, symbol: str, exchange: Optional[str], sta
             raise RuntimeError(f"Twelve Data error: {data}")    
         return data
 
-    identifier = f"{symbol} exchange={exchange or '-'}"
+    identifier = f"{symbol} exchange={exchange or 'none'}"
     payload = retry_with_backoff(fetch, identifier=identifier, jitter=False)
     return payload or {}
-    
-    return {}
 
 def _normalize(payload: Dict[str, Any], symbol: str, exchange: Optional[str]) -> pd.DataFrame:
     meta = payload.get("meta") or {}
@@ -152,15 +150,15 @@ def main() -> None:
             all_rows.append(cached_df)
             continue
         
-        print(f"Fetching {symbol} exchange={exchange or '-'}...")
+        print(f"Fetching {symbol} exchange={exchange or 'none'}...")
         payload = _request_time_series(api_key, symbol, exchange, start_date, end_date)
         if not payload:
-            print(f"  WARNING: no data returned for <{symbol:<10} exchange={exchange or '-'}>, skipping.")
+            print(f"  WARNING: no data returned for <{symbol:<10} exchange={exchange or 'none'}>, skipping.")
             continue
         
         out = _normalize(payload, symbol, exchange)
         if out.empty: 
-            print(f"  WARNING: no values for <{symbol:<10} exchange={exchange or '-'}>, skipping")
+            print(f"  WARNING: no values for <{symbol:<10} exchange={exchange or 'none'}>, skipping")
             continue
             
         out.to_csv(cache_path, index=False)

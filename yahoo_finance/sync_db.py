@@ -37,7 +37,7 @@ Key = Tuple[pd.Timestamp, str, str]
 
 def validate_and_load_csv(path: Path) -> pd.DataFrame:
     if not path.exists():
-        raise SystemExit(f"CSV file not found at {path}, run yahoo_finance/fetch_tickers.py first")
+        raise SystemExit(f"CSV file not found at {path}, run yahoo_finance/fetch.py first")
 
     df = pd.read_csv(path)
 
