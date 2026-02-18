@@ -1,9 +1,9 @@
-name: yahoo_finance_daily
+name: twelvedata_daily
 
 on:
   schedule:
     - cron: "0 0 * * *" # Runs every day at midnight
-
+  
   workflow_dispatch:
     inputs:
       force_refresh:
@@ -20,7 +20,7 @@ on:
         default: ""
 
 concurrency:
-  group: yahoo_finance_daily
+  group: twelvedata_daily
   cancel-in-progress: true
 
 jobs:
@@ -29,6 +29,7 @@ jobs:
     timeout-minutes: 20
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      TWELVEDATA_API_KEY: ${{ secrets.TWELVEDATA_API_KEY }}
       FORCE_REFRESH: ${{ github.event.inputs.force_refresh || 'false'}}
       START_DATE: ${{ github.event.inputs.start_date }}
       END_DATE: ${{ github.event.inputs.end_date }}
@@ -51,15 +52,15 @@ jobs:
       - name: Generate timestamp
         run: echo "TIMESTAMP=$(date +'%Y-%m-%d_%H-%M-%S')" >> $GITHUB_ENV
 
-      - name: Run Yahoo Finance Daily
-        run: python -m yahoo_finance.run_daily
+      - name: Run TwelveData Daily
+        run: python -m twelvedata.run_daily
 
       - name: Upload artifacts (CSV + logs)
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: yahoo_finance_out_${{ env.TIMESTAMP }}
+          name: twelvedata_out_${{ env.TIMESTAMP }}
           path: |
-            out/yahoo_finance_prices.csv
-            out/yahoo_finance_sync_*.jsonl
+            out/twelvedata_prices.csv
+            out/twelvedata_sync_*.jsonl
           if-no-files-found: warn

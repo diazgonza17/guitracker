@@ -21,6 +21,13 @@
     "twelvedata_exchange": "NASDAQ"
   },
   {
+    "asset_id": "USD/ARS",
+    "account_id": "bullmarket",
+    "quote_currency": "ARS",
+    "twelvedata_symbol": "USD/ARS",
+    "twelvedata_exchange": ""
+  },
+  {
     "asset_id": "AAPL",
     "account_id": "bullmarket",
     "quote_currency": "ARS",
