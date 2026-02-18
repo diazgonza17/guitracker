@@ -108,7 +108,7 @@ def _normalize(payload: Dict[str, Any], symbol: str, exchange: Optional[str]) ->
     if df.empty: 
         return df
 
-    df["as_of_date"] = pd.to_datetime(df["as_of_date"], errors="coerce", utc=True).dt.strftime("%Y-%m-%d")
+    df["as_of_date"] = pd.to_datetime(df["as_of_date"], errors="coerce").dt.date
     df = df[df["as_of_date"].notna()]
 
     df["price"] = pd.to_numeric(df["price"], errors="coerce")
@@ -162,7 +162,7 @@ def main() -> None:
         raise SystemExit("No data fetched for any symbol.")
     
     final_df = pd.concat(all_rows, ignore_index=True)
-    final_df = final_df.sort_values(by=["twelvedata_symbol", "twelvedata_exchange", "as_of_date"], ascending=[True, True, True])
+    final_df = final_df.sort_values(by=["twelvedata_symbol", "as_of_date"], ascending=[True, True])
     final_df.to_csv(OUT_PATH, index=False)
     print(f"Wrote {len(final_df)} rows to {OUT_PATH}")
 

@@ -6,6 +6,18 @@ from pathlib import Path
 from typing import List
 import pandas as pd
 
+from utils.envs import get_envs
+
+def make_run_id() -> str:
+    envs = get_envs(log_envs=True)
+    start_date = envs.start_date
+    end_date = envs.end_date
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M-%SZ")
+    if start_date and end_date:
+        return f"{now}__start-{start_date}_end-{end_date}"
+    else:
+        return now
+
 def utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
 

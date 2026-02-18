@@ -54,7 +54,7 @@ class Envs:
     database_url: Optional[str]
     run_id: Optional[str]
 
-def get_envs(*, required_envs: Iterable[str] = ()) -> Envs:
+def get_envs(*, required_envs: Iterable[str] = (), log_envs: bool = False) -> Envs:
     required_set = set(required_envs)
     values_by_env_name: Dict[str, Any] = {}
     for env_name, spec in _ENV_SPECS.items():
@@ -80,7 +80,8 @@ def get_envs(*, required_envs: Iterable[str] = ()) -> Envs:
             raise ValueError(f"Invalid value for {env_name}: {raw} (expected {t})") from e
 
     _validate_date_bounds(values_by_env_name)
-    _log_public_envs(values_by_env_name)
+    if log_envs:
+        _log_public_envs(values_by_env_name)
 
     return Envs(
         force_refresh=values_by_env_name["FORCE_REFRESH"],

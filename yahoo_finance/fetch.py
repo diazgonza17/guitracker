@@ -61,7 +61,7 @@ def _normalize(df: pd.DataFrame, ticker: str) -> pd.DataFrame:
         raise SystemExit("Invalid data returned from Yahoo Finance")
 
     out = pd.DataFrame()
-    out["as_of_date"] = pd.to_datetime(df["Date"], errors="coerce", utc=True).dt.strftime("%Y-%m-%d")
+    out["as_of_date"] = pd.to_datetime(df["Date"], errors="coerce").dt.date
     out["price"] = pd.to_numeric(df["Close"], errors="coerce")
     
     out["yfinance_symbol"] = ticker
