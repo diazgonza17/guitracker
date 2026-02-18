@@ -10,6 +10,8 @@ _ENV_SPECS: Dict[str, Dict[str, Any]] = {
     "START_DATE": {"type": "date", "default": None},
     "END_DATE": {"type": "date", "default": None},
     "TWELVEDATA_API_KEY": {"type": "str", "default": None, "secret": True},
+    "DATABASE_URL": {"type": "str", "default": None, "secret": True},
+    "RUN_ID": {"type": "str", "default": None},
 }
 
 def _parse_bool(val: str) -> bool:
@@ -49,6 +51,8 @@ class Envs:
     start_date: Optional[date]
     end_date: Optional[date]
     twelvedata_api_key: Optional[str]
+    database_url: Optional[str]
+    run_id: Optional[str]
 
 def get_envs(*, required_envs: Iterable[str] = ()) -> Envs:
     required_set = set(required_envs)
@@ -83,6 +87,8 @@ def get_envs(*, required_envs: Iterable[str] = ()) -> Envs:
         start_date=values_by_env_name["START_DATE"],
         end_date=values_by_env_name["END_DATE"],
         twelvedata_api_key=values_by_env_name["TWELVEDATA_API_KEY"],
+        database_url=values_by_env_name["DATABASE_URL"],
+        run_id=values_by_env_name["RUN_ID"],
     )
     
     

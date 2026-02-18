@@ -17,7 +17,7 @@ from utils.retry import retry_with_backoff
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ASSETS_PATH = REPO_ROOT / "assets.json"
 CACHE_DIR = REPO_ROOT / "yahoo_finance" / "cache"
-OUT_PATH = REPO_ROOT / "out" / "yahoo_finance_tickers_eod.csv"
+OUT_PATH = REPO_ROOT / "out" / "yahoo_finance_prices.csv"
 
 OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
 
@@ -57,10 +57,20 @@ def _normalize(df: pd.DataFrame, ticker: str) -> pd.DataFrame:
     df = df.reset_index()
     df.columns = [c[0] if isinstance(c, tuple) else c for c in df.columns]
 
-    out = df[["Date", "Close", "Volume"]].copy()
-    out["ticker"] = ticker
-    out = out.rename(columns={"Date": "date", "Close": "close_ars", "Volume": "volume"})
-    out["date"] = pd.to_datetime(out["date"]).dt.strftime("%Y-%m-%d")
+    if "Date" not in df.columns or "Close" not in df.columns:
+        raise SystemExit("Invalid data returned from Yahoo Finance")
+
+    out = pd.DataFrame()
+    out["as_of_date"] = pd.to_datetime(df["Date"], errors="coerce", utc=True).dt.strftime("%Y-%m-%d")
+    out["price"] = pd.to_numeric(df["Close"], errors="coerce")
+    
+    out["yfinance_symbol"] = ticker
+
+    out = out[out["as_of_date"].notna()]
+    out = out[out["price"].notna()]
+    out = out[out["price"] > 0]
+    
+    out = out.sort_values(["as_of_date"]).drop_duplicates(subset=["as_of_date", "yfinance_symbol"], keep="last")
     return out
 
 # ----------------------------
@@ -106,7 +116,7 @@ def main() -> None:
         raise SystemExit("No data fetched for any ticker.")
 
     final_df = pd.concat(all_rows, ignore_index=True)
-    final_df = final_df.sort_values(by=["ticker", "date"], ascending=[True, True])
+    final_df = final_df.sort_values(by=["yfinance_symbol", "as_of_date"], ascending=[True, True])
     final_df.to_csv(OUT_PATH, index=False)
     print(f"Wrote {len(final_df)} rows to {OUT_PATH}")
 

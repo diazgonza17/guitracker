@@ -20,8 +20,8 @@ BASE_URL = "https://api.twelvedata.com"
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ASSETS_PATH = REPO_ROOT / "assets.json"
-CACHE_DIR = REPO_ROOT / "twelve_data" / "cache"
-OUT_PATH = REPO_ROOT / "out" / "twelve_data_time_series_1day.csv"
+CACHE_DIR = REPO_ROOT / "twelvedata" / "cache"
+OUT_PATH = REPO_ROOT / "out" / "twelvedata_prices.csv"
 
 OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
 
@@ -98,13 +98,9 @@ def _normalize(payload: Dict[str, Any], symbol: str, exchange: Optional[str]) ->
         
         rows.append(
             {
-                "date": str(dt),
-                "close_usd": close,
-                "volume": v.get("volume"),
-                "symbol": meta.get("symbol") or symbol,
-                "exchange": meta.get("exchange") or (exchange or ""),
-                "currency": meta.get("currency") or "",
-                "interval": meta.get("interval") or INTERVAL,
+                "as_of_date": dt,
+                "price": close,
+                "twelvedata_symbol": str(meta.get("symbol") or symbol),
             }
         )
     
@@ -112,16 +108,14 @@ def _normalize(payload: Dict[str, Any], symbol: str, exchange: Optional[str]) ->
     if df.empty: 
         return df
 
-    df["date"] = pd.to_datetime(df["date"], errors="coerce").dt.strftime("%Y-%m-%d")
-    df = df[df["date"].notna()]
+    df["as_of_date"] = pd.to_datetime(df["as_of_date"], errors="coerce", utc=True).dt.strftime("%Y-%m-%d")
+    df = df[df["as_of_date"].notna()]
 
-    df["close_usd"] = pd.to_numeric(df["close_usd"], errors="coerce")
-    df = df[df["close_usd"].notna()]
-    df = df[df["close_usd"] > 0]
+    df["price"] = pd.to_numeric(df["price"], errors="coerce")
+    df = df[df["price"].notna()]
+    df = df[df["price"] > 0]
 
-    if "volume" in df.columns: 
-        df["volume"] = pd.to_numeric(df["volume"], errors="coerce")
-    
+    df = df.sort_values(["as_of_date"]).drop_duplicates(subset=["as_of_date", "twelvedata_symbol"], keep="last")
     return df
 
 # ----------------------------
@@ -168,7 +162,7 @@ def main() -> None:
         raise SystemExit("No data fetched for any symbol.")
     
     final_df = pd.concat(all_rows, ignore_index=True)
-    final_df = final_df.sort_values(by=["symbol", "exchange", "date"], ascending=[True, True, True])
+    final_df = final_df.sort_values(by=["twelvedata_symbol", "twelvedata_exchange", "as_of_date"], ascending=[True, True, True])
     final_df.to_csv(OUT_PATH, index=False)
     print(f"Wrote {len(final_df)} rows to {OUT_PATH}")
 
