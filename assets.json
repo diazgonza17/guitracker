@@ -86,5 +86,11 @@
     "account_id": "bullmarket",
     "quote_currency": "ARS",
     "yfinance_symbol": "SPY.BA"
+  },
+  {
+    "asset_id": "GOOGL",
+    "account_id": "bullmarket",
+    "quote_currency": "ARS",
+    "yfinance_symbol": "GOOGL.BA"
   }
 ]
